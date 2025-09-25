@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>上传音频</h1>
+<form action="/api/audio/upload" method="post" enctype="multipart/form-data">
+  <input type="file" name="file" accept="audio/*" required />
+  <button>上传并转写</button>
+</form>
+{% endblock %}
+
