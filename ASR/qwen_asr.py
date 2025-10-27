@@ -28,6 +28,11 @@ class QwenASR(BaseASR):
     def __init__(self, model: str = "qwen3-asr-flash"):
         self.model = model
 
+    @property
+    def max_duration_seconds(self) -> int:
+        # 千问 API 的批量限制是 3 分钟
+        return 180
+
     def post_text_process(self, text, threshold=20):
         def fix_char_repeats(s, thresh):
             res = []
