@@ -1,0 +1,8 @@
+# python使用的是3.9
+dashscope # 阿里巴巴 api
+pydub # 音频处理
+librosa # 音频处理
+python-dotenv # 加载环境变量
+tqdm
+silero_vad # VAD
+# srt # srt文件
