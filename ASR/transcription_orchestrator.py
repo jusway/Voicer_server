@@ -5,6 +5,7 @@ import shutil
 from tqdm import tqdm
 from collections import Counter
 from urllib.parse import urlparse
+import gradio as gr
 
 # 用于类型提示
 from ASR.base_asr import BaseASR
@@ -181,7 +182,9 @@ class TranscriptionOrchestrator:
                    context: str = "",
                    save_outputs: bool = True,
                    output_dir: str = None,
-                   cleanup_tmp: bool = True) -> dict:
+                   cleanup_tmp: bool = True,
+                   progress: gr.Progress = None
+                   ) -> dict:
         """
         执行完整的长音频转录流程。
         """
@@ -189,9 +192,13 @@ class TranscriptionOrchestrator:
 
         tmp_save_dir = None
         try:
+            progress(0.1, desc="音频准备中...VAD过程...")
             wav_list = self._prepare_audio_segments(input_file)
+            progress(0.2, desc="分段处理中...")
             wav_path_list, tmp_save_dir = self._create_tmp_chunks(wav_list, input_file)
+            progress(0.3, desc="收到任务，开始调用API...平均5分钟音频需要30秒转录...")
             raw_results, languages = self._run_parallel_transcription(wav_path_list, context)
+            progress(0.99, desc="处理完成，开始合成结果...")
             final_results = self._compose_results(raw_results, languages)
 
             if save_outputs:
