@@ -7,3 +7,4 @@ tqdm
 silero_vad # VAD
 # srt # srt文件
 gradio # 前后端
+requests
