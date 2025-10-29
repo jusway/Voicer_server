@@ -1,3 +1,5 @@
 .idea
 .env
 .gradio
+__pycache__
+.trae

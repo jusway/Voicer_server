@@ -85,21 +85,33 @@ class NewApiLLM(BaseLLM):
         print(f"成功获取并缓存了 {len(unique_model_names)} 个唯一模型。")
         return unique_model_names
 
-    def _build_payload(self, user_input: str, history: Optional[List[ChatMessage]] = None, system_prompt: Optional[str] = None, model: str = "default", stream: bool = True, **kwargs) -> Dict[str, Any]:
+    def _build_payload(self, messages: List[ChatMessage], model: str = "default", stream: bool = True, **kwargs) -> Dict[str, Any]:
         target_model = model if model != "default" else self.default_model
-        if not target_model: raise ValueError("必须指定模型名称")
-        messages = []
-        if system_prompt: messages.append({"role": "system", "content": system_prompt})
-        if history: messages.extend(history)
-        messages.append({"role": "user", "content": user_input})
+        if not target_model:
+            raise ValueError("必须指定模型名称")
+        self._validate_messages(messages)
         payload = {"model": target_model, "messages": messages, "stream": stream, **kwargs}
         return {k: v for k, v in payload.items() if v is not None}
 
-    def chat_stream(self, user_input: str, history: Optional[List[ChatMessage]] = None, system_prompt: Optional[str] = None, model: Optional[str] = None, **kwargs) -> Generator[str, None, None]:
-        request_model = model or self.default_model
-        if not request_model: raise ValueError("必须指定模型名称")
+    def _validate_messages(self, messages: List[ChatMessage]) -> None:
+        if not isinstance(messages, list) or not messages:
+            raise ValueError("messages 必须是非空列表")
+        valid_roles = {"system", "user", "assistant"}
+        for i, m in enumerate(messages):
+            if not isinstance(m, dict):
+                raise ValueError(f"第 {i} 条消息不是字典: {m}")
+            role = m.get("role")
+            content = m.get("content")
+            if role not in valid_roles:
+                raise ValueError(f"第 {i} 条消息 role 非法: {role}")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError(f"第 {i} 条消息 content 非法或为空")
 
-        payload = self._build_payload(user_input, history, system_prompt, request_model, True, **kwargs)
+    def chat_stream(self, messages: List[ChatMessage], model: Optional[str] = None, **kwargs) -> Generator[str, None, None]:
+        request_model = model or self.default_model
+        if not request_model:
+            raise ValueError("必须指定模型名称")
+        payload = self._build_payload(messages=messages, model=request_model, stream=True, **kwargs)
         # 确认聊天端点 (假设是 /v1/chat/completions)
         request_url = f"{self.base_url}/v1/chat/completions" # <-- 如果您的 base_url 不含 /v1 了，这里要改回
 
@@ -111,6 +123,7 @@ class NewApiLLM(BaseLLM):
         response = self._session.post(request_url, json=payload, headers=headers, stream=True, timeout=180)
         response.raise_for_status()
 
+        full_response = ""
         for line in response.iter_lines():
             if line:
                 decoded_line = line.decode('utf-8')
@@ -125,7 +138,9 @@ class NewApiLLM(BaseLLM):
                             delta = choices[0].get("delta")
                             if delta:
                                 content = delta.get("content")
-                                if content: yield content
+                                if content:
+                                    full_response += content
+                                    yield content
                     except json.JSONDecodeError:
                          print(f"警告：无法解析 SSE 数据块: {json_str}")
                          continue
@@ -156,10 +171,12 @@ if __name__ == '__main__':
             test_model = next((m for m in available_models if 'qwen' in m.lower()), None)
             if test_model:
                 print(f"--- 使用模型 '{test_model}' 进行测试 ---")
-                user_query = "你好，用中文介绍一下你自己。"
-                print(f"用户: {user_query}")
+                messages = [
+                    {"role": "system", "content": "你是一个友好的中文助手"},
+                    {"role": "user", "content": "你好，用中文介绍一下你自己。"}
+                ]
                 print("助手 (流式): ", end="")
-                for chunk in relay_client.chat_stream(user_input=user_query, model=test_model):
+                for chunk in relay_client.chat_stream(messages=messages, model=test_model):
                     print(chunk, end="", flush=True)
                 print("\n--------------------")
             else:

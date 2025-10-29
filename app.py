@@ -114,7 +114,7 @@ class App:
         (第一阶段：只实现拉取模型列表)
         """
 
-        with gr.Row():
+        with gr.Row(equal_height= True):
             get_models_btn = gr.Button("刷新模型列表", variant="primary", scale=1)
             model_dropdown = gr.Dropdown(
                 label="可用的模型",
@@ -122,6 +122,23 @@ class App:
                 scale=3,
                 info="列表将在此处显示"
             )
+            
+        # 添加系统提示词输入框
+        system_prompt = gr.Textbox(
+            label="系统提示词",
+            placeholder="在此输入系统提示词，用于指导AI助手的行为...",
+            lines=3,
+            max_lines=10,
+            interactive=True
+        )
+        
+        # 当前输入与输出（简化：不维护历史，仅流式生成）
+        user_input = gr.Textbox(label="当前用户输入", lines=4)
+        submit_btn = gr.Button("提交并流式生成", variant="primary")
+        stream_output = gr.Textbox(label="流式输出", lines=15)
+
+
+            
 
         # 绑定"拉取模型列表"
         list_models_handler = functools.partial(
@@ -133,6 +150,18 @@ class App:
             fn=list_models_handler,
             inputs=[],  # 没有输入
             outputs=[model_dropdown]  # 输出到下拉框
+        )
+
+        # 绑定流式聊天
+        chat_stream_handler = functools.partial(
+            handlers.handle_llm_chat_stream,
+            llm_client=llm_client
+        )
+
+        submit_btn.click(
+            fn=chat_stream_handler,
+            inputs=[system_prompt, user_input, model_dropdown],
+            outputs=[stream_output]
         )
 
 

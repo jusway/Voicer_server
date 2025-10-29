@@ -2,6 +2,8 @@
 import gradio as gr
 from ASR.transcription_orchestrator import TranscriptionOrchestrator
 from LLM.new_api_llm import NewApiLLM # 需要这个类型提示
+from LLM.message_builder import MessageBuilder
+from typing import Optional, Generator
 
 
 def handle_asr_transcription(
@@ -31,7 +33,7 @@ def handle_asr_transcription(
 
 def handle_llm_list_models(llm_client: NewApiLLM):
     """
-    处理“拉取模型列表”按钮点击事件。
+    处理"拉取模型列表"按钮点击事件。
     """
     print("Handler: 正在拉取模型列表...")
     models = llm_client.list_available_models()
@@ -45,6 +47,48 @@ def handle_llm_list_models(llm_client: NewApiLLM):
     print(f"Handler: 成功拉取 {len(models)} 个模型，默认选择 {default_model}")
 
     return gr.Dropdown(choices=models, value=default_model)
+
+
+
+def handle_llm_chat_stream(
+        system_prompt: Optional[str],
+        user_input: str,
+        selected_model: Optional[str],
+        *,
+        llm_client: NewApiLLM,
+) -> Generator[str, None, None]:
+    """
+    流式聊天处理器：
+    - 将系统提示词与当前输入组装为 messages
+    - 调用 llm_client.chat_stream 并逐步返回累积文本
+    - 输出为单个文本框的流式内容
+    """
+    partial_text = ""
+
+    # 基本校验
+    if not selected_model:
+        gr.Warning("请先选择模型")
+        yield "错误：未选择模型。"
+        return
+    if not isinstance(user_input, str) or not user_input.strip():
+        gr.Warning("请输入当前用户输入")
+        yield "错误：当前用户输入为空。"
+        return
+
+    builder = MessageBuilder(system_prompt=system_prompt, base_messages=None)
+    builder.add_user(user_input)
+    messages = builder.build()
+
+    try:
+        for chunk in llm_client.chat_stream(messages=messages, model=selected_model):
+            if chunk:
+                partial_text += chunk
+                yield partial_text
+        # 结束时，输出最终文本
+        yield partial_text
+    except Exception as e:
+        gr.Warning(f"生成失败：{e}")
+        yield f"错误：{e}"
 
 
 
