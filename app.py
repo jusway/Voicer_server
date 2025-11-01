@@ -54,6 +54,7 @@ class App:
                             with gr.TabItem(name):
                                 self._build_asr_tab(transcriber_instance)
 
+                # --- 第一层标签: 大模型 ---
                 with gr.TabItem("大模型"):
                     with gr.Tabs() as llm_level_tabs:
                         # 动态创建第二层标签
@@ -62,6 +63,11 @@ class App:
                                 with gr.TabItem("New API 接口"):
                                     # 调用新的辅助方法
                                     self._build_llm_tab(llm_client_instance)
+                
+                
+                # --- 第一层标签: 语音稿校对 ---
+                with gr.TabItem("语音稿校对"):
+                    self._build_proofread_tab(self.llm_clients["New API"]) 
 
         return app
 
@@ -162,6 +168,47 @@ class App:
             fn=chat_stream_handler,
             inputs=[system_prompt, user_input, model_dropdown],
             outputs=[stream_output]
+        )
+
+    def _build_proofread_tab(self, llm_client: NewApiLLM):
+        """
+        辅助方法：创建一个 语音稿校对 标签页的UI布局
+        """
+
+        with gr.Row(equal_height=True):
+            pf_get_models_btn = gr.Button("刷新模型列表", variant="primary", scale=1)
+            pf_model_dropdown = gr.Dropdown(
+                label="可用的模型",
+                interactive=True,
+                scale=3,
+                info="列表将在此处显示"
+            )
+
+        # 输入与输出
+        pf_user_transcript = gr.Textbox(label="待校对语音稿", lines=8)
+        pf_submit_btn = gr.Button("校对并流式生成", variant="primary")
+        pf_stream_output = gr.Textbox(label="校对结果（流式）", lines=15)
+
+        # 绑定模型列表刷新
+        pf_list_models_handler = functools.partial(
+            handlers.handle_llm_list_models,
+            llm_client=llm_client
+        )
+        pf_get_models_btn.click(
+            fn=pf_list_models_handler,
+            inputs=[],
+            outputs=[pf_model_dropdown]
+        )
+
+        # 绑定校对流式生成
+        pf_stream_handler = functools.partial(
+            handlers.handle_proofread_stream,
+            llm_client=llm_client
+        )
+        pf_submit_btn.click(
+            fn=pf_stream_handler,
+            inputs=[pf_user_transcript, pf_model_dropdown],
+            outputs=[pf_stream_output]
         )
 
 

@@ -3,6 +3,7 @@ import gradio as gr
 from ASR.transcription_orchestrator import TranscriptionOrchestrator
 from LLM.new_api_llm import NewApiLLM # 需要这个类型提示
 from LLM.message_builder import MessageBuilder
+from LLM.voice_proofread_one_shot import VoiceProofreadOneShot
 from typing import Optional, Generator
 
 
@@ -88,6 +89,45 @@ def handle_llm_chat_stream(
         yield partial_text
     except Exception as e:
         gr.Warning(f"生成失败：{e}")
+        yield f"错误：{e}"
+
+
+
+def handle_proofread_stream(
+        user_transcript: str,
+        selected_model: Optional[str],
+        *,
+        llm_client: NewApiLLM,
+) -> Generator[str, None, None]:
+    """
+    语音稿校对的流式处理器：
+    - 使用固定的系统提示词与 one-shot 示例构造 messages
+    - 调用 llm_client.chat_stream 并逐步返回累积文本
+    - 输出为单个文本框的流式内容
+    """
+    partial_text = ""
+
+    # 基本校验
+    if not selected_model:
+        gr.Warning("请先选择模型")
+        yield "错误：未选择模型。"
+        return
+    if not isinstance(user_transcript, str) or not user_transcript.strip():
+        gr.Warning("请输入待校对的语音稿")
+        yield "错误：待校对语音稿为空。"
+        return
+
+    builder = VoiceProofreadOneShot()
+    messages = builder.build_messages(user_transcript)
+
+    try:
+        for chunk in llm_client.chat_stream(messages=messages, model=selected_model):
+            if chunk:
+                partial_text += chunk
+                yield partial_text
+        yield partial_text
+    except Exception as e:
+        gr.Warning(f"校对失败：{e}")
         yield f"错误：{e}"
 
 

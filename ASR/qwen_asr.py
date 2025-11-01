@@ -117,7 +117,8 @@ class QwenASR(BaseASR):
             wav_url = f"file://{wav_url}"
 
         # Submit the ASR task
-        for _ in range(MAX_API_RETRY):
+        last_error = None
+        for attempt in range(MAX_API_RETRY):
             try:
                 messages = [
                     {
@@ -160,9 +161,10 @@ class QwenASR(BaseASR):
 
                 return language, self.post_text_process(recog_text)
             except Exception as e:
-                print(f"Retry {_ + 1}...  {wav_url}\nError: {e}")
+                last_error = e
+                print(f"Retry {attempt + 1}...  {wav_url}\nError: {e}")
             time.sleep(random.uniform(*API_RETRY_SLEEP))
-        raise Exception(f"{wav_url} task failed after {MAX_API_RETRY} retries. Last error: {e}")
+        raise Exception(f"{wav_url} task failed after {MAX_API_RETRY} retries. Last error: {last_error}")
 
 if __name__ == "__main__":
     qwen_asr = QwenASR(model="qwen3-asr-flash")
