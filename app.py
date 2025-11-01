@@ -211,6 +211,16 @@ class App:
             outputs=[pf_stream_output]
         )
 
+        # 显示对比（仅展示校对稿相对于原稿的差异，使用 HTML 高亮）
+        pf_compare_btn = gr.Button("显示对比", variant="primary")
+        pf_html_diff = gr.HTML()
+
+        pf_compare_btn.click(
+            fn=handlers.handle_proofread_compare,
+            inputs=[pf_user_transcript, pf_stream_output],
+            outputs=[pf_html_diff]
+        )
+
 
     def launch(self):
         """构建UI并启动Gradio服务"""

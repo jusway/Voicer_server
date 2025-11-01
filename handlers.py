@@ -4,6 +4,7 @@ from ASR.transcription_orchestrator import TranscriptionOrchestrator
 from LLM.new_api_llm import NewApiLLM # 需要这个类型提示
 from LLM.message_builder import MessageBuilder
 from LLM.voice_proofread_one_shot import VoiceProofreadOneShot
+from LLM.proofread_comparator import ProofreadComparator
 from typing import Optional, Generator
 
 
@@ -129,6 +130,25 @@ def handle_proofread_stream(
     except Exception as e:
         gr.Warning(f"校对失败：{e}")
         yield f"错误：{e}"
+
+
+def handle_proofread_compare(original_text: str, corrected_text: str):
+    """
+    比较原始语音稿与校对稿，返回单视图 HTML：
+    - 删除片段浅红背景、高亮插入位置
+    - 新增片段浅绿背景
+    - 替换为红+绿组合
+    """
+    if not isinstance(original_text, str) or not original_text.strip():
+        gr.Warning("原始语音稿为空")
+        return "错误：原始语音稿为空。"
+    if not isinstance(corrected_text, str) or not corrected_text.strip():
+        gr.Warning("校对结果为空")
+        return "错误：校对结果为空。"
+
+    comparator = ProofreadComparator(granularity="char")
+    md_single = comparator.render_html_singleview_highlight(original_text, corrected_text)
+    return md_single
 
 
 
