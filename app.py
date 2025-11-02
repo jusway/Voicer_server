@@ -4,7 +4,7 @@ import functools
 import os
 import config  # 必须首先导入，以加载 .env
 import handlers
-from ASR.transcription_orchestrator import TranscriptionOrchestrator
+from ASR.transcription_orchestrator import LongTextTranscriptionOrchestrator
 from ASR.qwen_asr import QwenASR
 from LLM.new_api_llm import NewApiLLM
 
@@ -24,8 +24,8 @@ class App:
 
         # --- ASR: 为每个引擎创建专用的长音频 "编排器" ---
         self.transcribers = {
-            "千问语音识别": TranscriptionOrchestrator(asr_client=self.qwen_engine, num_threads=4),
-            # "硅基流动": TranscriptionOrchestrator(asr_client=self.siliconflow_engine, num_threads=4),
+            "千问语音识别": LongTextTranscriptionOrchestrator(asr_client=self.qwen_engine, num_threads=4),
+            # "硅基流动": LongTextTranscriptionOrchestrator(asr_client=self.siliconflow_engine, num_threads=4),
         }
 
         # --- LLM: 引擎比较简单，直接聚合 ---
@@ -71,7 +71,7 @@ class App:
 
         return app
 
-    def _build_asr_tab(self, transcriber: TranscriptionOrchestrator):
+    def _build_asr_tab(self, transcriber: LongTextTranscriptionOrchestrator):
         """辅助方法：创建一个ASR标签页的UI布局"""
 
         with gr.Row():

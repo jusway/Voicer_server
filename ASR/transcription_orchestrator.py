@@ -14,11 +14,11 @@ from ASR.audio_tools import load_audio, process_vad, save_audio_file, WAV_SAMPLE
 from silero_vad import load_silero_vad
 
 
-class TranscriptionOrchestrator:
+class LongTextTranscriptionOrchestrator:
     """
-    一个面向对象的长音频转录“编排器”。
-    它 *使用* 一个抽象的 BaseASR 实例来执行转录。
-    封装了音频加载、VAD分段、并行API请求、结果合成和文件保存的完整流程。
+    长音频→长文本的编排器。
+    仅负责：加载音频、按引擎上限进行 VAD/切分、并行调用 ASR、合成长文本。
+    不包含字幕（SRT/VTT）相关能力。
     """
 
     def __init__(self,
@@ -152,24 +152,6 @@ class TranscriptionOrchestrator:
             "full_text": full_text,
         }
 
-    def _save_results(self, results: dict, input_file: str, output_dir: str) -> dict:
-        """将结果保存到 .txt 文件。"""
-        if os.path.exists(input_file):
-            base_name = os.path.splitext(os.path.basename(input_file))[0]
-        else:
-            base_name = os.path.splitext(urlparse(input_file).path)[0].split('/')[-1]
-
-        output_dir = output_dir or os.path.dirname(input_file) or "."
-        os.makedirs(output_dir, exist_ok=True)
-
-        txt_file_path = os.path.join(output_dir, f"{base_name}.txt")
-
-        with open(txt_file_path, 'w', encoding='utf-8') as f:
-            f.write(results["language"] + '\n')
-            f.write(results["full_text"] + '\n')
-        print(f"Full transcription saved to \"{txt_file_path}\"")
-
-        return {"txt_file_path": txt_file_path}
 
     def _cleanup(self, tmp_save_dir: str):
         """删除临时文件目录。"""
@@ -180,7 +162,6 @@ class TranscriptionOrchestrator:
     def transcribe(self,
                    input_file: str,
                    context: str = "",
-                   save_outputs: bool = True,
                    output_dir: str = None,
                    cleanup_tmp: bool = True,
                    progress: gr.Progress = None
@@ -201,15 +182,13 @@ class TranscriptionOrchestrator:
             progress(0.99, desc="处理完成，开始合成结果...")
             final_results = self._compose_results(raw_results, languages)
 
-            if save_outputs:
-                saved_paths = self._save_results(final_results, input_file, output_dir)
-                final_results.update(saved_paths)
-
             return final_results
 
         finally:
             if cleanup_tmp and tmp_save_dir:
                 self._cleanup(tmp_save_dir)
+
+    # 注意：本类不提供 SRT 相关方法，请使用 ASR.subtitle_orchestrator.SubtitleOrchestrator
 
 
 if __name__ == '__main__':
@@ -217,8 +196,8 @@ if __name__ == '__main__':
     from ASR.qwen_asr import QwenASR
     import config
     qwen_client = QwenASR(model="qwen3-asr-flash")
-    orchestrator = TranscriptionOrchestrator(
+    orchestrator = LongTextTranscriptionOrchestrator(
         asr_client=qwen_client,
         num_threads=4,
     )
-    orchestrator.transcribe(input_file=r"D:\DATA\Voicer测试数据\如何学戒_五分钟.wav", save_outputs=True)
+    orchestrator.transcribe(input_file=r"D:\DATA\Voicer测试数据\如何学戒_五分钟.wav")

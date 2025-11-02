@@ -1,6 +1,6 @@
 # handlers.py
 import gradio as gr
-from ASR.transcription_orchestrator import TranscriptionOrchestrator
+from ASR.transcription_orchestrator import LongTextTranscriptionOrchestrator
 from LLM.new_api_llm import NewApiLLM # 需要这个类型提示
 from LLM.message_builder import MessageBuilder
 from LLM.voice_proofread_one_shot import VoiceProofreadOneShot
@@ -12,7 +12,7 @@ def handle_asr_transcription(
         audio_file,
         context_text,
         *,
-        transcriber: TranscriptionOrchestrator,
+        transcriber: LongTextTranscriptionOrchestrator,
         progress=gr.Progress(track_tqdm=True)
 ):
     """
@@ -27,7 +27,6 @@ def handle_asr_transcription(
     result = transcriber.transcribe(
         input_file=audio_file.name,
         context=context_text,
-        save_outputs=False,
         progress=progress
     )
     return result["full_text"]
