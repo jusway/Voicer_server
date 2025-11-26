@@ -8,3 +8,4 @@ silero_vad # VAD
 # srt # srt文件
 gradio # 前后端
 requests
+openai # 调用openai兼容的 api

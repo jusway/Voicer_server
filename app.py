@@ -33,7 +33,6 @@ class App:
             "New API": NewApiLLM(
                 base_url=config.NEW_API_BASE_URL,
                 api_key=config.NEW_API_KEY,
-                user_id=config.NEW_API_USER_ID
             )
         }
 

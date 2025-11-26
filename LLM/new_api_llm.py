@@ -1,8 +1,5 @@
-# LLM/new_api_llm.py
-import requests
-import json
-from typing import Generator, Optional, List, Dict, Any
-from urllib.parse import quote, urljoin
+from typing import Generator, Optional, List, Dict
+from openai import OpenAI
 from LLM.base_llm import BaseLLM, ChatMessage
 
 
@@ -10,88 +7,55 @@ class NewApiLLM(BaseLLM):
     def __init__(self,
                  base_url: str,
                  api_key: str,
-                 user_id: str,
                  default_model: Optional[str] = None):
         if not base_url: raise ValueError("base_url 不能为空")
         if not api_key: raise ValueError("api_key 不能为空")
-        if not user_id: raise ValueError("user_id 不能为空")
 
-        self.base_url = base_url.rstrip('/')
+        base = base_url.rstrip('/')
+        self.base_url = base if base.endswith('/v1') else (base + '/v1')
         self.api_key = api_key
-        self.user_id = user_id
         self.default_model = default_model
         self._available_models: Optional[List[str]] = None
 
-        self._session = requests.Session()
-        self._session.headers.update({
-            "Authorization": f"Bearer {self.api_key}",
-        })
-        print(f"NewApi LLM Client Initialized. Base URL: {self.base_url}, User ID: {self.user_id}")
+        self._client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        print(f"NewApi LLM Client Initialized. Base URL: {self.base_url}")
 
     def list_available_models(self, force_refresh: bool = False) -> List[str]:
-        """
-        (新版本) 尝试使用 OpenAI 兼容的 /v1/models 接口获取模型列表。
-        """
         if self._available_models is not None and not force_refresh:
             print("从缓存返回可用模型列表。")
             return self._available_models
 
-        # 关键改动 1: URL 变了
-        models_url = f"{self.base_url}/v1/models"
-        model_names = []
-
-        print(f"正在从 (OpenAI 兼容接口) {models_url} 拉取可用模型列表...")
-
-        headers = self._session.headers.copy()  # 包含 Authorization
-        # 注意：标准的 /v1/ 接口不需要 New-Api-User 头部
+        print("正在从 OpenAI 兼容接口拉取可用模型列表...")
 
         try:
-            response = self._session.get(models_url, headers=headers, timeout=10)
-
-            # 如果是 401 (access token 无效), 这里会直接抛出异常
-            response.raise_for_status()
-
-            data = response.json()
-
-        except requests.exceptions.HTTPError as http_err:
-            # 尝试解析 401 错误体，它可能是 OpenAI 格式的
-            try:
-                error_data = http_err.response.json()
-                # 尝试提取 OpenAI 风格的错误信息
-                message = error_data.get('error', {}).get('message', str(http_err))
-            except json.JSONDecodeError:
-                # 如果返回的不是 JSON (比如纯文本 401)
-                message = str(http_err)
-
-            raise RuntimeError(f"API 请求失败 (HTTP {http_err.response.status_code}): {message}")
+            result = self._client.models.list()
         except Exception as e:
-            raise RuntimeError(f"请求时发生未知错误: {e}")
+            raise RuntimeError(f"请求模型列表失败: {e}")
 
-        # 关键改动 2: 解析 OpenAI 格式的响应
-        # 标准响应格式: { "object": "list", "data": [ {"id": "model-1", ...}, {"id": "model-2", ...} ] }
-        if isinstance(data, dict) and 'data' in data and isinstance(data['data'], list):
-            model_data = data['data']
-            for model_info in model_data:
-                if isinstance(model_info, dict) and 'id' in model_info:
-                    model_names.append(model_info['id'])
-        else:
-            # 如果 Key 对了，但不符合 OpenAI 格式，也要报错
-            raise RuntimeError(f"API 返回了非预期的 OpenAI 格式。Response: {data}")
+        model_names: List[str] = []
+        try:
+            data = getattr(result, "data", None)
+            if isinstance(data, list):
+                for m in data:
+                    mid = getattr(m, "id", None)
+                    if isinstance(mid, str):
+                        model_names.append(mid)
+        except Exception:
+            pass
 
-        if not model_names: print("警告：未从 API 获取到任何模型名称。")
+        if not model_names:
+            print("警告：未从 API 获取到任何模型名称。")
 
         unique_model_names = sorted(list(set(model_names)))
         self._available_models = unique_model_names
         print(f"成功获取并缓存了 {len(unique_model_names)} 个唯一模型。")
         return unique_model_names
 
-    def _build_payload(self, messages: List[ChatMessage], model: str = "default", stream: bool = True, **kwargs) -> Dict[str, Any]:
-        target_model = model if model != "default" else self.default_model
+    def _select_model(self, model: Optional[str]) -> str:
+        target_model = model or self.default_model
         if not target_model:
             raise ValueError("必须指定模型名称")
-        self._validate_messages(messages)
-        payload = {"model": target_model, "messages": messages, "stream": stream, **kwargs}
-        return {k: v for k, v in payload.items() if v is not None}
+        return target_model
 
     def _validate_messages(self, messages: List[ChatMessage]) -> None:
         if not isinstance(messages, list) or not messages:
@@ -108,79 +72,52 @@ class NewApiLLM(BaseLLM):
                 raise ValueError(f"第 {i} 条消息 content 非法或为空")
 
     def chat_stream(self, messages: List[ChatMessage], model: Optional[str] = None, **kwargs) -> Generator[str, None, None]:
-        request_model = model or self.default_model
-        if not request_model:
-            raise ValueError("必须指定模型名称")
-        payload = self._build_payload(messages=messages, model=request_model, stream=True, **kwargs)
-        # 确认聊天端点 (假设是 /v1/chat/completions)
-        request_url = f"{self.base_url}/v1/chat/completions" # <-- 如果您的 base_url 不含 /v1 了，这里要改回
+        target_model = self._select_model(model)
+        self._validate_messages(messages)
 
-        headers = self._session.headers.copy() # 包含 Authorization
-        headers["Content-Type"] = "application/json" # 确保存在
-        headers["Accept"] = "text/event-stream"
-        headers['New-Api-User'] = self.user_id # 使用原始 User ID
+        try:
+            stream = self._client.chat.completions.create(
+                model=target_model,
+                messages=messages,
+                stream=True,
+                **kwargs,
+            )
+        except Exception as e:
+            try:
+                resp = self._client.chat.completions.create(
+                    model=target_model,
+                    messages=messages,
+                    stream=False,
+                    **kwargs,
+                )
+                content = None
+                choices = getattr(resp, "choices", None)
+                if choices:
+                    first = choices[0]
+                    message = getattr(first, "message", None)
+                    if message is not None:
+                        content = getattr(message, "content", None)
+                if isinstance(content, str) and content:
+                    yield content
+                    return
+                raise RuntimeError("非流式回退成功但未返回文本内容")
+            except Exception as e2:
+                raise RuntimeError(f"创建流式会话失败: {e}; 非流式回退也失败: {e2}")
 
-        response = self._session.post(request_url, json=payload, headers=headers, stream=True, timeout=180)
-        response.raise_for_status()
-
-        full_response = ""
-        for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith('data: '):
-                    json_str = decoded_line[len('data: '):].strip()
-                    if json_str == '[DONE]': break
-                    if not json_str: continue
-                    try:
-                        data = json.loads(json_str)
-                        choices = data.get("choices")
-                        if choices and len(choices) > 0:
-                            delta = choices[0].get("delta")
-                            if delta:
-                                content = delta.get("content")
-                                if content:
-                                    full_response += content
-                                    yield content
-                    except json.JSONDecodeError:
-                         print(f"警告：无法解析 SSE 数据块: {json_str}")
-                         continue
+        for chunk in stream:
+            try:
+                choices = getattr(chunk, "choices", None)
+                if choices:
+                    first = choices[0]
+                    delta = getattr(first, "delta", None)
+                    if delta is not None:
+                        content = getattr(delta, "content", None)
+                        if isinstance(content, str) and content:
+                            yield content
+            except Exception:
+                continue
 
 
 if __name__ == '__main__':
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    base_url = os.getenv("NEW_API_BASE_URL")
-    api_key = os.getenv("NEW_API_KEY")
-    user_id = os.getenv("NEW_API_USER_ID")
-
-    if not base_url or not api_key or not user_id:
-        print("请在 .env 文件中设置 NEW_API_BASE_URL, NEW_API_KEY 和 NEW_API_USER_ID")
-    else:
-        relay_client = NewApiLLM(base_url=base_url, api_key=api_key, user_id=user_id)
-        available_models = relay_client.list_available_models()
-        print("\n--- 可用模型列表 ---")
-        if available_models:
-            for m in available_models: print(f"- {m}")
-        else:
-            print("未能获取到模型列表。")
-        print("--------------------\n")
-
-        if available_models:
-            test_model = next((m for m in available_models if 'qwen' in m.lower()), None)
-            if test_model:
-                print(f"--- 使用模型 '{test_model}' 进行测试 ---")
-                messages = [
-                    {"role": "system", "content": "你是一个友好的中文助手"},
-                    {"role": "user", "content": "你好，用中文介绍一下你自己。"}
-                ]
-                print("助手 (流式): ", end="")
-                for chunk in relay_client.chat_stream(messages=messages, model=test_model):
-                    print(chunk, end="", flush=True)
-                print("\n--------------------")
-            else:
-                print("在中转站可用模型中未找到合适的测试模型（如 qwen），跳过聊天测试。")
-        else:
-            print("无法获取模型列表，跳过聊天测试。")
+    pass
 
