@@ -43,8 +43,8 @@ def handle_llm_list_models(llm_client: NewApiLLM):
         gr.Warning("未能从 API 获取到模型列表，请检查 Key 或中转站配置。")
         return gr.Dropdown(choices=[], value=None)
 
-    # 自动选择一个默认模型（例如，包含 'gemini' 的第一个）
-    default_model = next((m for m in models if 'gemini' in m.lower()), models[0])
+    # 默认选择第一个模型
+    default_model = models[0]
     print(f"Handler: 成功拉取 {len(models)} 个模型，默认选择 {default_model}")
 
     return gr.Dropdown(choices=models, value=default_model)
